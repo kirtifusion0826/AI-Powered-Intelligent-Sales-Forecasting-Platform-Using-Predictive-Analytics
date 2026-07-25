@@ -14,7 +14,6 @@ class OutreachRequest(BaseModel):
 @router.post("/generate")
 def generate_outreach(data: OutreachRequest):
 
-    # Simple AI-like logic (rule-based for now)
     if data.industry.lower() == "tech":
         tone = "innovative and growth-focused"
     elif data.industry.lower() == "finance":

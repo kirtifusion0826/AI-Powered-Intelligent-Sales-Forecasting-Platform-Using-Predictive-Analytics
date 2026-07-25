@@ -1,11 +1,6 @@
-from fastapi import APIRouter   # ✅ ADDED
+from fastapi import APIRouter   
 
-router = APIRouter()            # ✅ ADDED
-
-
-# ===============================
-# YOUR ORIGINAL CODE BELOW (UNCHANGED)
-# ===============================
+router = APIRouter()           
 
 @router.get("/intelligence/analyze/{company}")
 def analyze_company(company: str):

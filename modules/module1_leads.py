@@ -1,11 +1,6 @@
-from fastapi import APIRouter   # ✅ ADDED
+from fastapi import APIRouter   
 
-router = APIRouter()            # ✅ ADDED
-
-
-# ===============================
-# YOUR ORIGINAL CODE BELOW (UNCHANGED)
-# ===============================
+router = APIRouter()          
 
 from fastapi import Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
