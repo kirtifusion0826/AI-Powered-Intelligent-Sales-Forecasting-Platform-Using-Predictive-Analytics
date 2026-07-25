@@ -41,7 +41,7 @@ if st.button("Create Lead"):
                     "status": status,
                     "notes": notes,
                 },
-                timeout=5   # ✅ ADDED
+                timeout=5   
             )
 
             if res.status_code == 200:
@@ -98,7 +98,7 @@ st.header("All Leads")
 
 if st.button("Load Leads"):
     try:
-        res = requests.get(f"{API}/leads/", timeout=5)  # ✅ ADDED
+        res = requests.get(f"{API}/leads/", timeout=5) 
 
         if res.status_code == 200:
             data = res.json()
