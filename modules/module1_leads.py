@@ -1,7 +1,6 @@
 from fastapi import APIRouter   
 
-router = APIRouter()          
-
+router = APIRouter()            
 from fastapi import Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 import csv
