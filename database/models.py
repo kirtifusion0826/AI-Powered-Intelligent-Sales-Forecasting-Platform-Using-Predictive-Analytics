@@ -1,237 +1,67 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
+
 from database.connection import Base
-from datetime import datetime
-
-
-# ==========================
-# MODULE 1 : LEADS
-# ==========================
 
 class Lead(Base):
-
     __tablename__ = "leads"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
+    id = Column(Integer, primary_key=True, index=True)
 
-    name = Column(
-        String,
-        nullable=False
-    )
+    company = Column(String)
 
-    email = Column(
-        String,
-        nullable=False
-    )
+    contact = Column(String)
 
-    company = Column(
-        String
-    )
+    designation = Column(String)
 
-    status = Column(
-        String
-    )
+    email = Column(String)
 
-    notes = Column(
-        String
-    )
+    phone = Column(String)
+
+    website = Column(String)
+
+    location = Column(String)
+
+    industry = Column(String)
+
+    score = Column(Integer)
+
+    status = Column(String)
+
+    notes = Column(String)
+    conversations = relationship("Conversation", back_populates="lead")
 
 
-    __table_args__ = (
-        UniqueConstraint(
-            "email",
-            name="uq_email"
-        ),
-    )
-
-
-
-# ==========================
-# MODULE 5 : CONVERSATIONS
-# ==========================
+from sqlalchemy import ForeignKey, Text
 
 class Conversation(Base):
-
     __tablename__ = "conversations"
 
+    id = Column(Integer, primary_key=True, index=True)
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
+    lead_id = Column(Integer, ForeignKey("leads.id"))
 
+    transcript = Column(Text)
 
-    lead_id = Column(
-        Integer
-    )
+    summary = Column(Text)
 
+    sentiment = Column(String)
 
-    conversation_type = Column(
-        String
-    )
+    buying_intent = Column(String)
 
+    next_action = Column(Text)
 
-    transcript = Column(
-        Text
-    )
+    crm_notes = Column(Text)
 
+    lead = relationship("Lead", back_populates="conversations")
 
-    summary = Column(
-        Text
-    )
+class User(Base):
+    __tablename__ = "users"
 
+    id = Column(Integer, primary_key=True, index=True)
 
-    key_points = Column(
-        Text
-    )
+    name = Column(String, nullable=False)
 
+    email = Column(String, unique=True, index=True, nullable=False)
 
-    action_items = Column(
-        Text
-    )
-
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-
-# ==========================
-# MODULE 5 : CRM ACTIVITY
-# ==========================
-
-class CRMActivity(Base):
-
-    __tablename__ = "crm_activity"
-
-
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
-
-
-    lead_id = Column(
-        Integer
-    )
-
-
-    activity_type = Column(
-        String
-    )
-
-
-    description = Column(
-        Text
-    )
-
-
-    status = Column(
-        String
-    )
-
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-    # ==========================
-# MODULE 6 : OUTREACH HISTORY
-# ==========================
-
-class OutreachHistory(Base):
-
-    __tablename__ = "outreach_history"
-
-
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
-
-
-    lead_id = Column(
-        Integer
-    )
-
-
-    company = Column(
-        String
-    )
-
-
-    industry = Column(
-        String
-    )
-
-
-    message = Column(
-        Text
-    )
-
-
-    tone = Column(
-        String
-    )
-
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
-
-
-
-# ==========================
-# MODULE 6 : LEAD SCORES
-# ==========================
-
-class LeadScore(Base):
-
-    __tablename__ = "lead_scores"
-
-
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
-
-
-    lead_id = Column(
-        Integer
-    )
-
-
-    company = Column(
-        String
-    )
-
-
-    industry = Column(
-        String
-    )
-
-
-    score = Column(
-        Integer
-    )
-
-
-    recommendation = Column(
-        Text
-    )
-
-
-    created_at = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
+    password_hash = Column(String, nullable=False)

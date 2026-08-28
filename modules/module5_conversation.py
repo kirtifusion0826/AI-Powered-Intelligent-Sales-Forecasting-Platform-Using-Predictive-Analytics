@@ -1,106 +1,59 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from services.conversation_service import analyze_transcript
+from database.connection import SessionLocal
+from database.models import Conversation
+router = APIRouter(
+    prefix="/conversation",
+    tags=["Conversation Intelligence"]
+)
 
-from database.connection import get_db
-from database.models import Conversation, CRMActivity
-
-from modules.module5_ai import analyze_conversation
-
-
-router = APIRouter()
-
-
+class SaveConversationRequest(BaseModel):
+    lead_id: int
+    transcript: str
+    summary: str
+    sentiment: str
+    buying_intent: str
+    next_action: str
+    crm_notes: str
 
 class ConversationRequest(BaseModel):
-
     lead_id: int
-
-    conversation_type: str
-
     transcript: str
 
 
+@router.get("/")
+def health_check():
+    return {
+        "message": "Conversation Intelligence Module is Working!"
+    }
 
-@router.post("/conversation/analyze")
-def analyze_sales_conversation(
-    data: ConversationRequest,
-    db: Session = Depends(get_db)
-):
+@router.post("/analyze")
+def analyze_conversation(request: ConversationRequest):
 
-    # AI Analysis
-    ai_result = analyze_conversation(
-        data.transcript
-    )
+    return analyze_transcript(request.transcript)
 
+@router.post("/save")
+def save_conversation(request: SaveConversationRequest):
 
-    # Save Conversation
+    db = SessionLocal()
+
     conversation = Conversation(
-
-        lead_id=data.lead_id,
-
-        conversation_type=data.conversation_type,
-
-        transcript=data.transcript,
-
-        summary=ai_result,
-
-        key_points=ai_result,
-
-        action_items=ai_result
-
+        lead_id=request.lead_id,
+        transcript=request.transcript,
+        summary=request.summary,
+        sentiment=request.sentiment,
+        buying_intent=request.buying_intent,
+        next_action=request.next_action,
+        crm_notes=request.crm_notes
     )
-
 
     db.add(conversation)
-
     db.commit()
-
     db.refresh(conversation)
+    db.close()
 
-
-
-    # CRM Sync
-    crm_activity = CRMActivity(
-
-        lead_id=data.lead_id,
-
-        activity_type="Conversation Analysis",
-
-        description=ai_result,
-
-        status="Synced"
-
-    )
-
-
-    db.add(crm_activity)
-
-    db.commit()
-
-    db.refresh(crm_activity)
-
-
-
-    # Response
     return {
-
-        "message":
-        "Conversation analyzed and CRM synced successfully",
-
-        "conversation_id":
-        conversation.id,
-
-        "crm_activity_id":
-        crm_activity.id,
-
-        "lead_id":
-        data.lead_id,
-
-        "crm_status":
-        "Synced",
-
-        "analysis":
-        ai_result
-
+        "message": "Conversation saved successfully!",
+        "conversation_id": conversation.id
     }

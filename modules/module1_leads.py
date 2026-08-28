@@ -1,115 +1,166 @@
-from fastapi import APIRouter   
-
-router = APIRouter()            
-from fastapi import Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import csv
-import io
-import re
-
-from database.connection import get_db
+from pydantic import BaseModel
+from modules.module2_intelligence import analyze_and_score_lead
+from database.connection import SessionLocal
 from database.models import Lead
 
-
-def is_valid_email(email: str) -> bool:
-    pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
-    return re.match(pattern, email) is not None
+router = APIRouter(prefix="/leads", tags=["Leads"])
 
 
-@router.post("/leads/")
+# ------------------------
+# DATABASE DEPENDENCY
+# ------------------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# ------------------------
+# CREATE LEAD
+# ------------------------
+@router.post("/")
 def create_lead(data: dict, db: Session = Depends(get_db)):
+    ai_result = analyze_and_score_lead(data)
+    status = ai_result["status"]
+    analysis = ai_result["analysis"]
+    score = ai_result["score"]
 
-    if not data.get("email") or not is_valid_email(data.get("email")):
-        raise HTTPException(status_code=400, detail="Invalid email")
+    if score >= 90:
+        status = "Hot"
+    elif score >= 75:
+        status = "Warm"
+    else:
+        status = "Cold"
 
-    existing = db.query(Lead).filter(Lead.email == data.get("email")).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Lead already exists")
-
-    new_lead = Lead(**data)
+    new_lead = Lead(
+        company=data.get("company"),
+        contact=data.get("contact"),
+        designation=data.get("designation"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        website=data.get("website"),
+        location=data.get("location"),
+        industry=data.get("industry"),
+        score=score,
+        status=status,
+        notes=data.get("notes"),
+    )
 
     db.add(new_lead)
     db.commit()
     db.refresh(new_lead)
 
-    return {"message": "Lead created", "lead": new_lead}
-
-
-@router.post("/leads/upload-csv")
-def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-
-    content = file.file.read().decode("utf-8")
-
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="CSV file is empty")
-
-    reader = csv.DictReader(io.StringIO(content))
-
-    inserted = 0
-    duplicates = 0
-    invalid = 0
-
-    for row in reader:
-        email = row.get("email")
-
-        if not email or not is_valid_email(email):
-            invalid += 1
-            continue
-
-        existing = db.query(Lead).filter(Lead.email == email).first()
-        if existing:
-            duplicates += 1
-            continue
-
-        new_lead = Lead(
-            name=row.get("name"),
-            email=email,
-            company=row.get("company"),
-            status=row.get("status"),
-            notes=row.get("notes"),
-        )
-
-        db.add(new_lead)
-        inserted += 1
-
-    db.commit()
-
     return {
-        "inserted": inserted,
-        "duplicates": duplicates,
-        "invalid": invalid
+        "message": "Lead created successfully",
+        "lead": new_lead,
+        "ai_analysis": ai_result
     }
 
-
-@router.get("/leads/")
+# ------------------------
+# GET ALL LEADS
+# ------------------------
+@router.get("/")
 def get_leads(db: Session = Depends(get_db)):
     return db.query(Lead).all()
 
 
-@router.put("/leads/{lead_id}")
+# ------------------------
+# GET SINGLE LEAD
+# ------------------------
+@router.get("/{lead_id}")
+def get_lead(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    return lead
+
+
+# ------------------------
+# UPDATE LEAD
+# ------------------------
+@router.put("/{lead_id}")
 def update_lead(lead_id: int, data: dict, db: Session = Depends(get_db)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
 
     if not lead:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Lead not found")
 
-    for key, value in data.items():
-        setattr(lead, key, value)
+    lead.company = data.get("company", lead.company)
+    lead.contact = data.get("contact", lead.contact)
+    lead.designation = data.get("designation", lead.designation)
+    lead.email = data.get("email", lead.email)
+    lead.phone = data.get("phone", lead.phone)
+    lead.website = data.get("website", lead.website)
+    lead.location = data.get("location", lead.location)
+    lead.industry = data.get("industry", lead.industry)
+    lead.score = data.get("score", lead.score)
+    lead.status = data.get("status", lead.status)
+    lead.notes = data.get("notes", lead.notes)
+    ai = analyze_and_score_lead({
+        "company": lead.company,
+        "contact": lead.contact,
+        "designation": lead.designation,
+        "email": lead.email,
+        "phone": lead.phone,
+        "website": lead.website,
+        "location": lead.location,
+        "industry": lead.industry,
+        "notes": lead.notes,
+    })
 
+    lead.score = ai["score"]
+    lead.status = ai["status"]
     db.commit()
     db.refresh(lead)
 
-    return {"message": "Updated", "lead": lead}
+    return {
+        "message": "Lead updated successfully",
+        "lead": lead,
+    }
+@router.post("/reanalyze")
+def reanalyze_all_leads(db: Session = Depends(get_db)):
 
+    leads = db.query(Lead).all()
 
-@router.delete("/leads/{lead_id}")
+    for lead in leads:
+
+        ai = analyze_and_score_lead({
+            "company": lead.company,
+            "contact": lead.contact,
+            "designation": lead.designation,
+            "email": lead.email,
+            "phone": lead.phone,
+            "website": lead.website,
+            "location": lead.location,
+            "industry": lead.industry,
+            "notes": lead.notes,
+        })
+
+        lead.score = ai["score"]
+        lead.status = ai["status"]
+
+    db.commit()
+
+    return {
+        "message": f"{len(leads)} leads re-analyzed successfully."
+    }
+
+# ------------------------
+# DELETE LEAD
+# ------------------------
+@router.delete("/{lead_id}")
 def delete_lead(lead_id: int, db: Session = Depends(get_db)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
 
     if not lead:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Lead not found")
 
     db.delete(lead)
     db.commit()
 
-    return {"message": "Deleted"}
+    return {"message": "Lead deleted successfully"}

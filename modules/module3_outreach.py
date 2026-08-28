@@ -1,111 +1,184 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from database.connection import get_db
-from database.models import OutreachHistory
+router = APIRouter(prefix="/outreach", tags=["Outreach"])
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
 
+load_dotenv()
 
-router = APIRouter(
-    prefix="/outreach",
-    tags=["Outreach"]
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
 )
 
+MODEL = "llama-3.3-70b-versatile"
+INDUSTRY_PROMPTS = {
 
+    "technology": """
+Focus on:
+- AI adoption
+- Cloud migration
+- Application modernization
+- Cybersecurity
+- Digital transformation
+""",
+
+    "finance": """
+Focus on:
+- Regulatory compliance
+- Risk management
+- Fraud detection
+- Data security
+- Cost optimization
+""",
+
+    "healthcare": """
+Focus on:
+- Patient experience
+- Digital health
+- Healthcare analytics
+- Data privacy
+- Hospital efficiency
+""",
+
+    "manufacturing": """
+Focus on:
+- Industry 4.0
+- Supply chain optimization
+- Predictive maintenance
+- Smart factories
+- Automation
+""",
+
+    "retail": """
+Focus on:
+- Customer experience
+- Personalized shopping
+- Omnichannel retail
+- Inventory optimization
+- Demand forecasting
+""",
+
+    "education": """
+Focus on:
+- Digital learning
+- Student engagement
+- AI-powered education
+- Learning analytics
+- Cloud infrastructure
+"""
+}
 class OutreachRequest(BaseModel):
-
-    lead_id: int
     name: str
     company: str
     industry: str
     status: str
 
-
+    analysis: str = ""
+    score: int = 0
 
 @router.post("/generate")
-def generate_outreach(
-    data: OutreachRequest,
-    db: Session = Depends(get_db)
-):
-
-    # Decide tone
-
-    if data.industry.lower() == "tech":
-
-        tone = "innovative and growth-focused"
-
-    elif data.industry.lower() == "finance":
-
-        tone = "professional and ROI-driven"
-
-    else:
-
-        tone = "friendly and engaging"
-
-
-
-    # Generate outreach message
-
-    message = f"""
-Hi {data.name},
-
-I came across {data.company} and was impressed by your work in the {data.industry} space.
-
-We help companies like yours achieve better results through smart AI-powered solutions.
-
-Given your current status as '{data.status}', I believe we can bring immediate value.
-
-Would you be open to a quick discussion?
-
-Best regards,
-Sales Team
-"""
-
-
-    message = message.strip()
-
-
-
-    # Save outreach activity
-
-    outreach_record = OutreachHistory(
-
-        lead_id=data.lead_id,
-
-        company=data.company,
-
-        industry=data.industry,
-
-        message=message,
-
-        tone=tone
-
+def generate_outreach(data: OutreachRequest):
+    industry_prompt = INDUSTRY_PROMPTS.get(
+        data.industry.lower(),
+        """
+    Focus on:
+    - Business growth
+    - Operational efficiency
+    - Digital transformation
+    """
     )
+    prompt = f"""
+        You are an experienced Enterprise Sales Consultant at Infosys.
 
+        Your task is to generate a highly personalized outreach package for a potential client based on the AI lead analysis.
 
-    db.add(outreach_record)
+        Lead Details
 
-    db.commit()
+        Company: {data.company}
 
-    db.refresh(outreach_record)
+        Contact Person: {data.name}
 
+        Industry: {data.industry}
+        Industry-Specific Guidance:
+        {industry_prompt}
+        Lead Status: {data.status}
 
+        Lead Score:
+        {data.score}
 
-    return {
+        AI Lead Analysis:
+        {data.analysis}
+        Important Instructions:
 
-        "message":
-        "Outreach generated and saved successfully",
+        - Base the outreach primarily on the AI Lead Analysis.
+        - Mention business opportunities identified in the analysis.
+        - Use the industry guidance above to tailor the email.
+        - Avoid generic templates.
+        - Make the email unique for this company.
+        Instructions:
 
-        "outreach_id":
-        outreach_record.id,
+        - Carefully analyze the lead information and AI analysis before writing.
+        - Personalize the email specifically for this company.
+        - Mention challenges or opportunities identified in the AI analysis whenever appropriate.
+        - Explain how Infosys can help solve those business challenges.
+        - Keep the email professional, consultative, and concise.
+        - Avoid generic sales language or exaggerated marketing claims.
+        - End the email with a clear call-to-action requesting a short meeting.
+       
+        Email Formatting Requirements:
 
-        "lead_id":
-        data.lead_id,
+        - Begin with a greeting (e.g., Dear Rahul,).
+        - Leave one blank line after the greeting.
+        - Split the email into 3–4 short paragraphs.
+        - Each paragraph should contain 2–3 sentences.
+        - End with a professional closing such as:
 
-        "tone":
-        tone,
+        Best Regards,
+        Infosys Sales Team
+        Return valid JSON only.
+        In the "message" field, represent line breaks using escaped newline characters (\\n), not literal line breaks.
+        Generate:
 
-        "generated_message":
-        message
+        1. A suitable outreach tone.
+        2. A compelling email subject.
+        3. A personalized outreach email (150–200 words).
+        4. Four concise talking points that a sales representative can use during the meeting.
 
-    }
+        Return ONLY valid JSON in the following format:
+
+        {{
+            "tone": "...",
+            "subject": "...",
+            "message": "...",
+            "talking_points": [
+                "...",
+                "...",
+                "...",
+                "..."
+            ]
+        }}
+
+        Do not include markdown.
+        Do not include explanations.
+        Return only valid JSON.
+        """
+
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.7,
+        response_format={"type": "json_object"}
+    )
+    content = response.choices[0].message.content
+
+    import json
+
+    return json.loads(content)

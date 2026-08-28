@@ -1,155 +1,134 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+import os
+import json
+from dotenv import load_dotenv
+from openai import OpenAI
+from modules.ml.feature_engineering import extract_features
+from modules.ml.predict import predict_lead as ml_predict
+router = APIRouter(prefix="/score", tags=["AI Lead Scoring"])
 
-from database.connection import get_db
-from database.models import LeadScore
+load_dotenv()
 
-
-
-router = APIRouter(
-    prefix="/ai",
-    tags=["AI Scoring"]
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
 )
 
-
+MODEL = "llama-3.3-70b-versatile"
 
 class ScoreRequest(BaseModel):
-
-    lead_id: int
+    name: str
     company: str
-    status: str
     industry: str
+    status: str
+    notes: str = ""
+    analysis: str = ""
 
-
-
-
-@router.post("/score")
-def score_lead(
-    data: ScoreRequest,
-    db: Session = Depends(get_db)
-):
-
-
-    score = 50
-
-
-
-    # Status based scoring
-
-    if data.status == "converted":
-
-        score += 40
-
-
-    elif data.status == "contacted":
-
-        score += 20
-
-
-
-    elif data.status == "qualified":
-
-        score += 30
-
-
-
-    # Industry scoring
-
-    if data.industry.lower() == "tech":
-
-        score += 10
-
-
-    elif data.industry.lower() == "finance":
-
-        score += 5
-
-
-
-    # Maximum score
-
-    score = min(score,100)
-
-
-
-    # Recommendation
-
-    if score >= 80:
-
-        recommendation = (
-            "High priority lead. "
-            "Close deal immediately."
-        )
-
-
-    elif score >= 60:
-
-        recommendation = (
-            "Warm lead. "
-            "Schedule meeting."
-        )
-
-
-    elif score >= 40:
-
-        recommendation = (
-            "Follow up with personalized outreach."
-        )
-
-
-    else:
-
-        recommendation = (
-            "Cold lead. "
-            "Start awareness campaign."
-        )
-
-
-
-    # Save scoring history
-
-    score_record = LeadScore(
-
-        lead_id=data.lead_id,
-
-        company=data.company,
-
-        industry=data.industry,
-
-        score=score,
-
-        recommendation=recommendation
-
+@router.post("/predict")
+def predict_lead(data: ScoreRequest):
+    lead = {
+    "company": data.company,
+    "industry": data.industry,
+    "status": data.status,
+    "notes": data.notes
+    }
+    analysis = json.loads(data.analysis)
+    features = extract_features(
+        lead,
+        analysis
     )
+    print(features)
+    prediction = ml_predict(features)
 
+    lead_score = prediction["lead_score"]
 
-    db.add(score_record)
+    conversion_probability = prediction["conversion_probability"]
+    print(prediction)
+    prompt = f"""
+        You are an expert AI-powered CRM Lead Scoring Assistant used by Infosys.
 
-    db.commit()
+        Your task is to analyze the lead information and estimate the likelihood of converting this lead into a customer.
 
-    db.refresh(score_record)
+        Lead Details:
 
+        Name: {data.name}
+        Company: {data.company}
+        Industry: {data.industry}
+        Current Status: {data.status}
+        Notes: {data.notes}
+        Previous AI Analysis: {data.analysis}
 
+        Instructions:
+
+        Analyze the lead carefully.
+
+        
+        Machine Learning Prediction
+
+            Lead Score:
+            {lead_score}
+
+            Conversion Probability:
+            {conversion_probability}%
+
+            Using the ML prediction above,
+
+            Generate:
+
+            1. Priority
+            2. Confidence
+            3. Next Best Action
+            4. Professional business reasoning.
+        Scoring Guidelines:
+
+        - Higher scores should indicate stronger conversion potential.
+        - Consider industry relevance, lead status, and notes.
+        - Recommendations should be practical and business-oriented.
+        Provide 2 to 3 concise sentences explaining why this lead received the assigned score so that it looks professional as well as detailed.
+        The next best action should be specific and actionable.
+
+        Examples:
+
+        - Schedule a product demo within 48 hours.
+        - Assign the lead to a senior sales representative.
+        - Share a case study relevant to the industry.
+        - Send pricing information.
+        - Continue nurturing through email.
+        Do not use the contact person's name in the next best action.
+        Write the recommendation as a business action for the sales team.
+        Estimate the confidence level as Low, Medium, High, or Very High.
+
+        Return ONLY valid JSON in this format:
+
+        {{
+            "priority": "",
+            "confidence": "",
+            "next_best_action": "",
+            "reason": ""
+        }}
+
+        Do not include markdown.
+        Do not include explanations.
+        Return only valid JSON.
+        """
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"}
+    )
+    content = response.choices[0].message.content       
+
+    llm_output = json.loads(content)
 
     return {
-
-        "message":
-        "Lead score generated and saved successfully",
-
-        "score_id":
-        score_record.id,
-
-        "lead_id":
-        data.lead_id,
-
-        "company":
-        data.company,
-
-        "score":
-        score,
-
-        "recommendation":
-        recommendation
-
+        "lead_score": lead_score,
+        "conversion_probability": conversion_probability,
+        **llm_output
     }
